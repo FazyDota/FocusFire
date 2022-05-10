@@ -199,13 +199,13 @@ def handle_draft_sector_parsing(draft_screenshot):
         url_result = url_result[:-1]
 
     logger = logging.getLogger()
-    logger.disabled = False
+    logger.setLevel(logging.INFO)
 
     pyperclip.copy(result)
     logging.info(f'Copied into clipboard! Result:\n {result}')
     website_url = f"https://vintage-stats.herokuapp.com/abilities?heroes={url_result}"
     logging.info(f'Opening the website: {website_url}')
-    webbrowser.open(website_url)
+    webbrowser.open_new(website_url)
 
     # Some debug profiling
     if DEBUG:
@@ -232,7 +232,11 @@ def start_draft_parse():
         screenshot = cv2.imread(event.src_path)
         logging.debug(f'Screenshot spotted on {event.src_path}')
         logger = logging.getLogger()
-        logger.disabled = not DEBUG
+        if DEBUG:
+            logger.setLevel(logging.DEBUG)
+        else:
+            logger.setLevel(logging.WARNING)
+
         handle_draft_sector_parsing(screenshot)
 
     path = "C:\\Program Files (x86)\\Steam\\userdata\\67712324\\760\\remote\\570\\screenshots"
