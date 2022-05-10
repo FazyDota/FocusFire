@@ -1,5 +1,6 @@
 import cv2
 import logging
+import os
 import pytesseract
 import pyperclip
 import webbrowser
@@ -53,6 +54,9 @@ def handle_draft_sector_parsing(draft_screenshot):
     :param draft_screenshot: OpenCV image, screenshot of the draft screen, 2560x1440 resolution is expected.
     :return: False if the first sector (top left) contains no meaningful text, True otherwise.
     """
+    if DEBUG:
+        os.makedirs("screens", exist_ok=False)
+        os.makedirs("sectors", exist_ok=False)
     # todo: Support for any resolution, use ratios etc
     try:
         hero_sectors = [draft_screenshot[193:233, 464:773],
