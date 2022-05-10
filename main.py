@@ -38,7 +38,7 @@ def match_with_hero_names(ocr_hero_name):
     best_edit_distance = len(ocr_hero_name)
     for full_name in hero_names:
         edit_distance = get_edit_distance(ocr_hero_name.lower(), full_name.lower())
-        # logging.info(f'{ocr_hero_name.lower()} vs {full_name.lower()} - edit distance {edit_distance}')
+        logging.debug(f'{ocr_hero_name.lower()} vs {full_name.lower()} - edit distance {edit_distance}')
         if edit_distance_limit > edit_distance < best_edit_distance:
             best_edit_distance = edit_distance
             best_match = full_name
@@ -76,7 +76,7 @@ def handle_draft_sector_parsing(draft_screenshot):
         return False
     result = ''
     url_result = ''
-    logging.info('Processing hero id:')
+    logging.debug('Processing hero id:')
     date_string = datetime.now().strftime('%y%m%d_%H%M%S%f')[:-3]
     is_radiant = True
 
@@ -165,7 +165,7 @@ def handle_draft_sector_parsing(draft_screenshot):
 
     for idx, hero_name_sector in enumerate(hero_sectors):
         t1_start = process_time()
-        logging.info(f'{idx} ')
+        logging.debug(f'{idx} ')
         if DEBUG:
             cv2.imwrite(f'sectors\\{date_string}_sector_{idx}_0_raw.png', hero_name_sector)
         processed_image = cv2.GaussianBlur(hero_name_sector, (5, 5), 1)
@@ -189,7 +189,7 @@ def handle_draft_sector_parsing(draft_screenshot):
                 return False
 
         if hero_text:
-            logging.info(f'Extracted {hero_text}, added to result string.')
+            logging.debug(f'Extracted {hero_text}, added to result string.')
             result += hero_text + '|'
             url_result += str(hero_name_to_id_map[hero_text]) + ','
 
@@ -209,14 +209,14 @@ def handle_draft_sector_parsing(draft_screenshot):
 
     # Some debug profiling
     if DEBUG:
-        logging.info(f'Image processing CPU time total: {processing_time_total}')
-        logging.info(f'Text extraction CPU time total: {extracting_time_total}')
+        logging.debug(f'Image processing CPU time total: {processing_time_total}')
+        logging.debug(f'Text extraction CPU time total: {extracting_time_total}')
         global start_time
         global total_running_times
         total_time = time() - start_time
         total_running_times.append(round(total_time, 4))
-        logging.info(f'Total running normal time: {total_time}')
-        logging.info(total_running_times)
+        logging.debug(f'Total running normal time: {total_time}')
+        logging.debug(total_running_times)
     return True
 
 
@@ -235,7 +235,7 @@ def start_draft_parse():
         if DEBUG:
             logger.setLevel(logging.DEBUG)
         else:
-            logger.setLevel(logging.WARNING)
+            logger.setLevel(logging.INFO)
 
         handle_draft_sector_parsing(screenshot)
 
