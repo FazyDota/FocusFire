@@ -4,7 +4,7 @@ hero_names = ["Abaddon", "Alchemist", "Ancient Apparition", "Anti-Mage", "Arc Wa
               "Clinkz", "Clockwerk", "Crystal Maiden", "Dark Seer", "Dark Willow", "Dawnbreaker",
               "Dazzle", "Death Prophet", "Disruptor", "Doom", "Dragon Knight", "Drow Ranger",
               "Earth Spirit", "Earthshaker", "Elder Titan", "Ember Spirit", "Enchantress", "Enigma",
-              "Faceless Void", "Grimstroke", "Gyrocopter", "Hoodwink", "Huskar", "Invoker", "Io ",
+              "Faceless Void", "Grimstroke", "Gyrocopter", "Hoodwink", "Huskar", "Invoker", "Io",
               "Jakiro", "Juggernaut", "Keeper of the Light", "Kunkka", "Legion Commander",
               "Leshrac", "Lich", "Lifestealer", "Lina", "Lion", "Lone Druid", "Luna", "Lycan",
               "Magnus", "Marci", "Mars", "Medusa", "Meepo", "Mirana", "Monkey King", "Morphling",
@@ -19,7 +19,7 @@ hero_names = ["Abaddon", "Alchemist", "Ancient Apparition", "Anti-Mage", "Arc Wa
               "Vengeful Spirit", "Venomancer", "Viper", "Visage", "Void Spirit", "Wraith King",
               "Weaver", "Warlock", "Windranger", "Winter Wyvern", "Witch Doctor", "Zeus"]
 
-character_whitelist = set('abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+character_whitelist = set('abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ012458')
 
 hero_name_to_id_map = {"Anti-Mage": 1, "Axe": 2, "Bane": 3, "Bloodseeker": 4, "Crystal Maiden": 5, "Drow Ranger": 6, "Earthshaker": 7, "Juggernaut": 8, "Mirana": 9,
                        "Morphling": 10, "Shadow Fiend": 11, "Phantom Lancer": 12, "Puck": 13, "Pudge": 14, "Razor": 15, "Sand King": 16, "Storm Spirit": 17, "Sven": 18,
