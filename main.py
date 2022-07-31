@@ -30,7 +30,8 @@ class DraftParser:
 
     def start_watching(self):
         """
-        Starts the whole draft screenshot parsing procedure.
+        Starts watching for a draft screenshot.
+        If a screenshot comes, initiate parsing.
         """
         logging.info('Draft parse started, waiting for a screenshot.')
 
