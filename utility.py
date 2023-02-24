@@ -1,6 +1,5 @@
 import logging
 import pytesseract
-
 from data import character_whitelist, hero_names
 
 logging.basicConfig(handlers=[logging.FileHandler("full.log"), logging.StreamHandler()], encoding="utf-8",
@@ -58,12 +57,14 @@ def match_with_hero_names(ocr_hero_name):
         if edit_distance_limit > edit_distance < best_edit_distance:
             best_edit_distance = edit_distance
             best_match = full_name
+        if edit_distance <= 1:
+            return best_match
 
     logging.debug(f'Returning {best_match} as result, edit distance is {best_edit_distance}.')
     return best_match
 
 
-def validated_extracted_text(text):
+def validate_extracted_text(text):
     if text != 'Bn' and text != 'Be' and (len(text) > 2 or text.lower() == "io"):
         return True
     return False

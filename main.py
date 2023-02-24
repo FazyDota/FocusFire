@@ -1,27 +1,112 @@
 import argparse
-
 import cv2
 import logging
 import pyperclip
 import webbrowser
-
+import pygetwindow as gw
+import numpy as np
+from sklearn.cluster import KMeans
+from warnings import simplefilter
 from datetime import datetime
-from time import sleep, time, process_time
+from time import sleep, time, process_time, perf_counter
 from watchdog.observers import Observer
 from watchdog.events import PatternMatchingEventHandler
 from data import hero_name_to_id_map
-from utility import OCR_text_from_image, validated_extracted_text
+from utility import OCR_text_from_image, validate_extracted_text
 
-## LOGGING SETUP
+simplefilter(action='ignore', category=FutureWarning)
+
+# LOGGING SETUP
 logging.basicConfig(handlers=[logging.FileHandler("full.log"), logging.StreamHandler()], encoding='utf-8',
                     format="%(asctime)s: %(levelname)s - %(message)s",
                     datefmt='%H:%M:%S', level=logging.INFO)
+
+
+def guess_color_scheme(color_list):
+    red = color_list[0]
+    green = color_list[1]
+    blue = color_list[2]
+
+    if 8 < red < 23 and 30 < green < 55 and 10 < blue < 25:
+        return "green"
+
+    if 30 < red < 55 and 8 < green < 23 and 6 < blue < 17:
+        return "red"
+
+    return "unknown"
+
+
+def get_dominant_colors(image_orig, count=1):
+    image = cv2.cvtColor(image_orig, cv2.COLOR_BGR2RGB)
+    reshape = image.reshape((image.shape[0] * image.shape[1], 3))
+    cluster = KMeans(n_clusters=count).fit(reshape)
+    labels = np.arange(0, len(np.unique(cluster.labels_)) + 1)
+    (hist, _) = np.histogram(cluster.labels_, bins=labels)
+    hist = hist.astype("float")
+    hist /= hist.sum()
+    colors = sorted([(percent, color) for (percent, color) in zip(hist, cluster.cluster_centers_)])
+
+    color_list = []
+
+    for (percent, color) in colors:
+        color_list.append([int(color[0]), int(color[1]), int(color[2])])
+
+    return color_list
+
+
+def setup_for_OCR(input_image, assumed_color):
+    masks_tried = 0
+    if assumed_color == "green":
+        green_mask = cv2.inRange(input_image, (20, 120, 20), (70, 255, 70))
+        extracted_text = OCR_text_from_image(255 - green_mask)
+        if validate_extracted_text(extracted_text):
+            logging.debug(f"Successfully extracted meaningful text with green mask: {extracted_text}")
+            return extracted_text
+        masks_tried += 1
+    elif assumed_color == "red":
+        red_mask = cv2.inRange(input_image, (21, 30, 145), (35, 60, 205))
+        extracted_text = OCR_text_from_image(255 - red_mask)
+        if validate_extracted_text(extracted_text):
+            logging.debug(f"Successfully extracted meaningful text with red mask: {extracted_text}")
+            return extracted_text
+        masks_tried += 2
+    elif assumed_color == "unknown":
+        extracted_text = OCR_text_from_image(255 - input_image)
+        if validate_extracted_text(extracted_text):
+            logging.debug(f"Successfully extracted meaningful text with white mask: {extracted_text}")
+            return extracted_text
+        masks_tried += 4
+
+    while masks_tried < 7:
+        if masks_tried == 1:
+            red_mask = cv2.inRange(input_image, (21, 30, 145), (35, 60, 205))
+            extracted_text = OCR_text_from_image(255 - red_mask)
+            if validate_extracted_text(extracted_text):
+                logging.debug(f"Successfully extracted meaningful text with red mask: {extracted_text}")
+                return extracted_text
+            masks_tried += 2
+        if masks_tried == 2:
+            green_mask = cv2.inRange(input_image, (20, 120, 20), (70, 255, 70))
+            extracted_text = OCR_text_from_image(255 - green_mask)
+            if validate_extracted_text(extracted_text):
+                logging.debug(f"Successfully extracted meaningful text with green mask: {extracted_text}")
+                return extracted_text
+            masks_tried += 1
+        if masks_tried == 3:
+            extracted_text = OCR_text_from_image(255 - input_image)
+            if validate_extracted_text(extracted_text):
+                logging.debug(f"Successfully extracted meaningful text with white mask: {extracted_text}")
+                return extracted_text
+            masks_tried += 4
+
+    return "Unknown"
 
 
 class DraftParser:
     start_time = 0
     total_running_times = []
     is_radiant = True
+    ocr_called = 0
 
     def __init__(self, local, debug):
         self.date_string = ""
@@ -43,11 +128,16 @@ class DraftParser:
             logger = logging.getLogger()
             logger.setLevel(logging.INFO)
             if self.debug_flag:
-                logger.setLevel(logging.DEBUG)
+                #logger.setLevel(logging.DEBUG)
                 import os
                 debug_dir_paths = ["sectors", "screens", "sectors\\extra"]
                 for dir_path in debug_dir_paths:
                     os.makedirs(dir_path, exist_ok=True)
+            try:
+                win = gw.getWindowsWithTitle('FocusFire')[0]
+                win.activate()
+            except gw.PyGetWindowException:
+                pass
             self.handle_draft_sector_parsing(screenshot)
 
         dota_screens_path = "C:\\Program Files (x86)\\Steam\\userdata\\67712324\\760\\remote\\570\\screenshots"
@@ -77,6 +167,7 @@ class DraftParser:
         :param draft_screenshot: OpenCV image, screenshot of the draft screen, 2560x1440 resolution is expected.
         :return: False if the first sector (top left) contains no meaningful text, True otherwise.
         """
+
         try:
             hero_sectors = [draft_screenshot[193:233, 464:773],
                             draft_screenshot[410:450, 464:773],
@@ -99,6 +190,7 @@ class DraftParser:
         except TypeError:
             logging.warning('Could not load the screenshot correctly.')
             return False
+
         result = ''
         url_result = ''
         logging.debug('Processing hero id:')
@@ -107,34 +199,30 @@ class DraftParser:
             cv2.imwrite(f'screens\\{self.date_string}_draft.png', draft_screenshot)
             
         error_count = 0
-        processing_time_total = 0
-        extracting_time_total = 0
-
+        
         for idx, hero_name_sector in enumerate(hero_sectors):
-            t1_start = process_time()
             logging.debug(f'{idx} ')
             cv2.imwrite(f'sectors\\{self.date_string}_sector_{idx}_0_raw.png', hero_name_sector)
             processed_image = cv2.GaussianBlur(hero_name_sector, (5, 5), 1)
             cv2.imwrite(f'sectors\\{self.date_string}_sector_{idx}_1_gaussian.png', processed_image)
-            t1_stop = process_time()
-            processing_time_total += t1_stop - t1_start
 
-            t1_start = process_time()
-            hero_text = self.try_to_extract_hero_name(idx, processed_image)
-            t1_stop = process_time()
-            extracting_time_total += t1_stop - t1_start
+            scale_percent = 50  # percent of original size
+            width = int(processed_image.shape[1] * scale_percent / 100)
+            height = int(processed_image.shape[0] * scale_percent / 100)
+            dim = (width, height)
 
-            if not hero_text and idx == 0:
-                logging.warning('No meaningful text found in the first sector with either cut, re-running.')
-                return False
+            smaller_image = cv2.resize(processed_image, dim, interpolation = cv2.INTER_AREA)
+            cv2.imwrite(f'sectors\\{self.date_string}_sector_{idx}_1_smaller.png', smaller_image)
 
-            if not hero_text:
+            hero_text = self.try_to_extract_hero_name(idx, smaller_image)
+
+            if not hero_text or hero_text == "Unknown":
                 error_count = error_count + 1
-                if error_count > 2:
+                if error_count > 4:
                     return False
 
             if hero_text:
-                logging.info(f'{hero_text} extracted')
+                logging.debug(f'{hero_text} extracted')
                 result += hero_text + '|'
                 url_result += str(hero_name_to_id_map[hero_text]) + ','
 
@@ -159,8 +247,7 @@ class DraftParser:
 
         # Some debug profiling
         if self.debug_flag:
-            logging.info(f'Image processing CPU time total: {processing_time_total}')
-            logging.info(f'Text extraction CPU time total: {extracting_time_total}')
+            logging.info(f'OCR function called {self.ocr_called} times.')
 
             total_time = time() - self.start_time
             self.total_running_times.append(round(total_time, 4))
@@ -169,70 +256,18 @@ class DraftParser:
         return True
 
     def try_to_extract_hero_name(self, sector_idx, input_image):
-        if sector_idx == 0:
-            green_mask = cv2.inRange(input_image, (20, 120, 20), (70, 255, 70))
-            extracted_text = OCR_text_from_image(255 - green_mask)
-            cv2.imwrite(f'sectors\\{self.date_string}_sector_{sector_idx}_2_green.png', 255 - green_mask)
-            logging.debug(f"Trying to extract from sector {sector_idx} via green mask, result: {extracted_text}")
+        assumed_color = "unknown"
+        if sector_idx in [0, 5]:
+            dominant_colors = get_dominant_colors(input_image)[0]
+            assumed_color = guess_color_scheme(dominant_colors)
+            logging.info(f"SECTOR {sector_idx}: Assumed scheme: {assumed_color}")
 
-            if validated_extracted_text(extracted_text):
-                logging.debug(f"Successfully extracted meaningful text, returning and setting to RADIANT")
-                self.is_radiant = True
-                return extracted_text
+        elif assumed_color == "unknown":
+            dominant_colors = get_dominant_colors(input_image)[0]
+            assumed_color = guess_color_scheme(dominant_colors)
+            logging.info(f"SECTOR {sector_idx}: Assumed scheme: {assumed_color}")
 
-            red_mask = cv2.inRange(input_image, (21, 30, 145), (35, 60, 205))
-            extracted_text = OCR_text_from_image(255 - red_mask)
-            cv2.imwrite(f'sectors\\{self.date_string}_sector_{sector_idx}_3_red.png', 255 - red_mask)
-            logging.debug(f"Trying to extract from sector {sector_idx} via red mask, result: {extracted_text}")
-
-            if validated_extracted_text(extracted_text):
-                logging.debug(f"Successfully extracted meaningful text, returning and setting to DIRE")
-                self.is_radiant = False
-                return extracted_text
-
-            extracted_text = OCR_text_from_image(255 - input_image)
-            cv2.imwrite(f'sectors\\{self.date_string}_sector_{sector_idx}_4_white_hsv.png', 255 - input_image)
-            cv2.imwrite(f'sectors\\{self.date_string}_sector_{sector_idx}_4_white.png', 255 - input_image)
-            logging.debug(f"Trying to extract from sector {sector_idx} via white mask, result: {extracted_text}")
-
-            if validated_extracted_text(extracted_text):
-                logging.debug(f"Successfully extracted meaningful text, returning and setting to RADIANT")
-                self.is_radiant = True
-                return extracted_text
-
-            return None
-        else:
-            if (sector_idx < 5 and self.is_radiant) or (not self.is_radiant and sector_idx > 4):
-                green_mask = cv2.inRange(input_image, (20, 120, 20), (70, 255, 70))
-                extracted_text = OCR_text_from_image(255 - green_mask)
-                cv2.imwrite(f'sectors\\{self.date_string}_sector_{sector_idx}_green.png', 255 - green_mask)
-                logging.debug(f"Trying to extract from sector {sector_idx} via green mask, result: {extracted_text}")
-
-                if extracted_text != 'Bn' and extracted_text != 'Be' and len(extracted_text) > 2:
-                    logging.debug(f"Successfully extracted meaningful text, returning")
-                    return extracted_text
-
-                extracted_text = OCR_text_from_image(255 - input_image)
-                cv2.imwrite(f'sectors\\{self.date_string}_sector_{sector_idx}_white.png', 255 - input_image)
-                logging.debug(f"Trying to extract from sector {sector_idx} via white mask, result: {extracted_text}")
-
-                if validated_extracted_text(extracted_text):
-                    logging.debug(f"Successfully extracted meaningful text, returning")
-                    return extracted_text
-
-                return None
-
-            else:
-                red_mask = cv2.inRange(input_image, (21, 30, 145), (35, 60, 205))
-                extracted_text = OCR_text_from_image(255 - red_mask)
-                cv2.imwrite(f'sectors\\{self.date_string}_sector_{sector_idx}_2_red.png', 255 - red_mask)
-                logging.debug(f"Trying to extract from sector {sector_idx} via red mask, result: {extracted_text}")
-
-                if validated_extracted_text(extracted_text):
-                    logging.debug(f"Successfully extracted meaningful text, returning")
-                    return extracted_text
-
-                return None
+        return setup_for_OCR(input_image, assumed_color)
 
 
 if __name__ == '__main__':
@@ -242,4 +277,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     draft_parser = DraftParser(local=args.local, debug=args.debug)
+    from os import system
+
+    system("title " + "FocusFire")
     draft_parser.start_watching()
