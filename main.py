@@ -5,10 +5,12 @@ import pyperclip
 import webbrowser
 import pygetwindow as gw
 import numpy as np
+
+from gooey import Gooey
 from sklearn.cluster import KMeans
 from warnings import simplefilter
 from datetime import datetime
-from time import sleep, time, process_time, perf_counter
+from time import sleep, time
 from watchdog.observers import Observer
 from watchdog.events import PatternMatchingEventHandler
 from data import hero_name_to_id_map
@@ -102,16 +104,31 @@ def setup_for_OCR(input_image, assumed_color):
     return "Unknown"
 
 
+def try_to_extract_hero_name(sector_idx, input_image):
+    assumed_color = "unknown"
+    if sector_idx in [0, 5]:
+        dominant_colors = get_dominant_colors(input_image)[0]
+        assumed_color = guess_color_scheme(dominant_colors)
+        logging.info(f"SECTOR {sector_idx}: Assumed scheme: {assumed_color}")
+
+    elif assumed_color == "unknown":
+        dominant_colors = get_dominant_colors(input_image)[0]
+        assumed_color = guess_color_scheme(dominant_colors)
+        logging.info(f"SECTOR {sector_idx}: Assumed scheme: {assumed_color}")
+
+    return setup_for_OCR(input_image, assumed_color)
+
+
 class DraftParser:
     start_time = 0
     total_running_times = []
     is_radiant = True
     ocr_called = 0
 
-    def __init__(self, local, debug):
+    def __init__(self, aperetti, debug):
         self.date_string = ""
         self.debug_flag = debug
-        self.local_site = local
+        self.aperetti = aperetti
 
     def start_watching(self):
         """
@@ -128,7 +145,7 @@ class DraftParser:
             logger = logging.getLogger()
             logger.setLevel(logging.INFO)
             if self.debug_flag:
-                #logger.setLevel(logging.DEBUG)
+                logger.setLevel(logging.DEBUG)
                 import os
                 debug_dir_paths = ["sectors", "screens", "sectors\\extra"]
                 for dir_path in debug_dir_paths:
@@ -162,8 +179,10 @@ class DraftParser:
 
     def handle_draft_sector_parsing(self, draft_screenshot):
         """
-        Draft screen contains 10 regions where hero name text can be found. This function takes a screenshot of the draft screens,
-        extracts those 10 regions of interest (ROI) and then performs pre-processing before calling an OCR function.
+        Draft screen contains 10 regions where hero name text can be found. This function takes a screenshot of the
+        draft screens,extracts those 10 regions of interest (ROI) and then performs pre-processing before calling
+        an OCR function.
+
         :param draft_screenshot: OpenCV image, screenshot of the draft screen, 2560x1440 resolution is expected.
         :return: False if the first sector (top left) contains no meaningful text, True otherwise.
         """
@@ -211,10 +230,10 @@ class DraftParser:
             height = int(processed_image.shape[0] * scale_percent / 100)
             dim = (width, height)
 
-            smaller_image = cv2.resize(processed_image, dim, interpolation = cv2.INTER_AREA)
+            smaller_image = cv2.resize(processed_image, dim, interpolation=cv2.INTER_AREA)
             cv2.imwrite(f'sectors\\{self.date_string}_sector_{idx}_1_smaller.png', smaller_image)
 
-            hero_text = self.try_to_extract_hero_name(idx, smaller_image)
+            hero_text = try_to_extract_hero_name(idx, smaller_image)
 
             if not hero_text or hero_text == "Unknown":
                 error_count = error_count + 1
@@ -233,10 +252,12 @@ class DraftParser:
 
         pyperclip.copy(result)
         logging.info(f'Copied into clipboard! Result:\n {result}')
-        website_url = f"https://vintage-stats.herokuapp.com/abilities?heroes={url_result}"
+        website_url = f"http://127.0.0.1:8000/abilities?heroes={url_result}"
 
-        if self.local_site:
-            website_url = f"http://127.0.0.1:8000/abilities?heroes={url_result}"
+        if self.aperetti:
+            dire = url_result.split(",")[5:]
+            aperetti_string = ",".join(url_result.split(",")[0:5] + ["null", "null"] + dire[::-1])
+            website_url = f"https://abilitydraftplus.com/?heroes=[{aperetti_string}]"
         logging.info(f'Opening the website: {website_url}')
         firefox_path = "C:\\Program Files\\Mozilla Firefox\\firefox.exe"
         webbrowser.register('firefox', None, webbrowser.BackgroundBrowser(firefox_path))
@@ -255,29 +276,20 @@ class DraftParser:
             logging.info(self.total_running_times)
         return True
 
-    def try_to_extract_hero_name(self, sector_idx, input_image):
-        assumed_color = "unknown"
-        if sector_idx in [0, 5]:
-            dominant_colors = get_dominant_colors(input_image)[0]
-            assumed_color = guess_color_scheme(dominant_colors)
-            logging.info(f"SECTOR {sector_idx}: Assumed scheme: {assumed_color}")
 
-        elif assumed_color == "unknown":
-            dominant_colors = get_dominant_colors(input_image)[0]
-            assumed_color = guess_color_scheme(dominant_colors)
-            logging.info(f"SECTOR {sector_idx}: Assumed scheme: {assumed_color}")
-
-        return setup_for_OCR(input_image, assumed_color)
-
-
-if __name__ == '__main__':
+@Gooey
+def main():
     parser = argparse.ArgumentParser(description='Parse AD drafts.')
-    parser.add_argument('-l', '--local', dest='local', action='store_true')
+    parser.add_argument('-adp', '--aperetti', dest='aperetti', action='store_true')
     parser.add_argument('-d', '--debug', dest='debug', action='store_true')
     args = parser.parse_args()
 
-    draft_parser = DraftParser(local=args.local, debug=args.debug)
+    draft_parser = DraftParser(aperetti=args.aperetti, debug=args.debug)
     from os import system
 
     system("title " + "FocusFire")
     draft_parser.start_watching()
+
+
+if __name__ == '__main__':
+    main()

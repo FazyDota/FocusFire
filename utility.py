@@ -57,7 +57,7 @@ def match_with_hero_names(ocr_hero_name):
         if edit_distance_limit > edit_distance < best_edit_distance:
             best_edit_distance = edit_distance
             best_match = full_name
-        if edit_distance <= 1:
+        if edit_distance == 0:
             return best_match
 
     logging.debug(f'Returning {best_match} as result, edit distance is {best_edit_distance}.')
