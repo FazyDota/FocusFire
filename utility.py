@@ -1,6 +1,12 @@
+import bisect
 import logging
+from titlecase import titlecase
+from collections import deque
+from datetime import datetime
+
+import cv2
 import pytesseract
-from data import character_whitelist, hero_names
+from data import character_whitelist, hero_names, hero_names_lower
 
 logging.basicConfig(handlers=[logging.FileHandler("full.log"), logging.StreamHandler()], encoding="utf-8",
                     format="%(asctime)s: %(message)s",
@@ -12,6 +18,8 @@ def replace_numbers(ocr_input):
 
 
 def OCR_text_from_image(img):
+    # dt = datetime.now().strftime('%y%m%d_%H%M%S%f')[:-3]
+    # cv2.imwrite(f'sectors\\debug\\sector_{dt}_OCR_used.png', img)
     ocr_config = r'--oem 1 --psm 7'
     output = pytesseract.image_to_string(img, config=ocr_config)
     logging.debug(f"Pure OCR output: {output}")
@@ -45,19 +53,28 @@ def match_with_hero_names(ocr_hero_name):
 
     :param ocr_hero_name: A supposed hero name created in OCR of the draft screen.
     In case of bad read, result input could be just "Bn" or similar.
-    :return: The closest matching hero name (only up to edit distance equal to 1/3 of input string) or the input string in case of no good match.
+    :return: The closest matching hero name (only up to edit distance equal to 1/3 of input string) or the input string
+    in case of no good match.
     """
     logging.debug(f'Calling match_with_hero_names({ocr_hero_name}).')
+    if ocr_hero_name.lower() in hero_names_lower:
+        logging.debug(f'Found a direct match: {titlecase(ocr_hero_name)}.')
+        return titlecase(ocr_hero_name)
+
+    shift = bisect.bisect_left(hero_names_lower, ocr_hero_name.lower())
     best_match = ocr_hero_name
     edit_distance_limit = len(ocr_hero_name) / 3 + len(ocr_hero_name) % 3
     best_edit_distance = len(ocr_hero_name)
-    for full_name in hero_names:
+    rotated_hero_names = deque(hero_names)
+    rotated_hero_names.rotate(-shift)
+
+    for full_name in rotated_hero_names:
         edit_distance = get_edit_distance(ocr_hero_name.lower(), full_name.lower())
         logging.debug(f'{ocr_hero_name.lower()} vs {full_name.lower()} - edit distance {edit_distance}')
         if edit_distance_limit > edit_distance < best_edit_distance:
             best_edit_distance = edit_distance
             best_match = full_name
-        if edit_distance == 0:
+        if edit_distance <= 1:
             return best_match
 
     logging.debug(f'Returning {best_match} as result, edit distance is {best_edit_distance}.')

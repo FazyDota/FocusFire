@@ -57,6 +57,11 @@ def get_dominant_colors(image_orig, count=1):
 
 
 def setup_for_OCR(input_image, assumed_color):
+    extracted_text = OCR_text_from_image(255 - input_image)
+    if validate_extracted_text(extracted_text):
+        logging.debug(f"Successfully extracted meaningful text with white mask: {extracted_text}")
+        return extracted_text
+
     masks_tried = 0
     if assumed_color == "green":
         green_mask = cv2.inRange(input_image, (20, 120, 20), (70, 255, 70))
@@ -109,12 +114,12 @@ def try_to_extract_hero_name(sector_idx, input_image):
     if sector_idx in [0, 5]:
         dominant_colors = get_dominant_colors(input_image)[0]
         assumed_color = guess_color_scheme(dominant_colors)
-        logging.info(f"SECTOR {sector_idx}: Assumed scheme: {assumed_color}")
+        logging.debug(f"SECTOR {sector_idx}: Assumed scheme: {assumed_color}")
 
     elif assumed_color == "unknown":
         dominant_colors = get_dominant_colors(input_image)[0]
         assumed_color = guess_color_scheme(dominant_colors)
-        logging.info(f"SECTOR {sector_idx}: Assumed scheme: {assumed_color}")
+        logging.debug(f"SECTOR {sector_idx}: Assumed scheme: {assumed_color}")
 
     return setup_for_OCR(input_image, assumed_color)
 
@@ -123,12 +128,13 @@ class DraftParser:
     start_time = 0
     total_running_times = []
     is_radiant = True
-    ocr_called = 0
 
-    def __init__(self, aperetti, debug):
+    def __init__(self, aperetti, debug, watch_time, screenshot_path=""):
         self.date_string = ""
         self.debug_flag = debug
         self.aperetti = aperetti
+        self.watch_time = watch_time
+        self.screenshot_path = screenshot_path
 
     def start_watching(self):
         """
@@ -141,7 +147,7 @@ class DraftParser:
             self.start_time = time()
             sleep(0.4)
             screenshot = cv2.imread(event.src_path)
-            logging.debug(f'Screenshot spotted on {event.src_path}')
+            logging.info(f'Screenshot spotted on {event.src_path}')
             logger = logging.getLogger()
             logger.setLevel(logging.INFO)
             if self.debug_flag:
@@ -157,7 +163,10 @@ class DraftParser:
                 pass
             self.handle_draft_sector_parsing(screenshot)
 
-        dota_screens_path = "C:\\Program Files (x86)\\Steam\\userdata\\67712324\\760\\remote\\570\\screenshots"
+        if self.screenshot_path:
+            dota_screens_path = self.screenshot_path
+        else:
+            dota_screens_path = "C:\\Program Files (x86)\\Steam\\userdata\\67712324\\760\\remote\\570\\screenshots"
 
         patterns = ["*.jpg"]
         ignore_patterns = None
@@ -188,11 +197,11 @@ class DraftParser:
         """
 
         try:
-            hero_sectors = [draft_screenshot[193:233, 464:773],
-                            draft_screenshot[410:450, 464:773],
-                            draft_screenshot[628:668, 464:773],
-                            draft_screenshot[845:885, 464:773],
-                            draft_screenshot[1062:1102, 464:773],
+            hero_sectors = [draft_screenshot[193:233, 455:773],
+                            draft_screenshot[410:450, 455:773],
+                            draft_screenshot[628:668, 455:773],
+                            draft_screenshot[845:885, 455:773],
+                            draft_screenshot[1062:1102, 455:773],
 
                             draft_screenshot[193:233, 1789:2099],
                             draft_screenshot[410:450, 1789:2099],
@@ -220,20 +229,25 @@ class DraftParser:
         error_count = 0
         
         for idx, hero_name_sector in enumerate(hero_sectors):
-            logging.debug(f'{idx} ')
-            cv2.imwrite(f'sectors\\{self.date_string}_sector_{idx}_0_raw.png', hero_name_sector)
-            processed_image = cv2.GaussianBlur(hero_name_sector, (5, 5), 1)
-            cv2.imwrite(f'sectors\\{self.date_string}_sector_{idx}_1_gaussian.png', processed_image)
+            logging.debug(f'{idx}')
+            processed_image = cv2.GaussianBlur(hero_name_sector, (9, 9), 1)
 
-            scale_percent = 50  # percent of original size
+            if self.debug_flag:
+                cv2.imwrite(f'sectors\\{self.date_string}_sector_{idx}_0_raw.png', hero_name_sector)
+            if self.debug_flag:
+                cv2.imwrite(f'sectors\\{self.date_string}_sector_{idx}_1_gaussian.png', processed_image)
+
+            scale_percent = 200  # percent of original size
             width = int(processed_image.shape[1] * scale_percent / 100)
             height = int(processed_image.shape[0] * scale_percent / 100)
             dim = (width, height)
 
-            smaller_image = cv2.resize(processed_image, dim, interpolation=cv2.INTER_AREA)
-            cv2.imwrite(f'sectors\\{self.date_string}_sector_{idx}_1_smaller.png', smaller_image)
+            scaled_image = cv2.resize(processed_image, dim, interpolation=cv2.INTER_CUBIC)
 
-            hero_text = try_to_extract_hero_name(idx, smaller_image)
+            if self.debug_flag:
+                cv2.imwrite(f'sectors\\{self.date_string}_sector_{idx}_1_smaller.png', scaled_image)
+
+            hero_text = try_to_extract_hero_name(idx, scaled_image)
 
             if not hero_text or hero_text == "Unknown":
                 error_count = error_count + 1
@@ -267,9 +281,7 @@ class DraftParser:
             webbrowser.open_new(website_url)
 
         # Some debug profiling
-        if self.debug_flag:
-            logging.info(f'OCR function called {self.ocr_called} times.')
-
+        if self.watch_time:
             total_time = time() - self.start_time
             self.total_running_times.append(round(total_time, 4))
             logging.info(f'Total running normal time: {total_time}')
@@ -282,9 +294,12 @@ def main():
     parser = argparse.ArgumentParser(description='Parse AD drafts.')
     parser.add_argument('-adp', '--aperetti', dest='aperetti', action='store_true')
     parser.add_argument('-d', '--debug', dest='debug', action='store_true')
+    parser.add_argument('-t', '--time', dest='watch_time', action='store_true')
+    parser.add_argument('-path', '--screenshot-path', dest='screenshot_path')
     args = parser.parse_args()
 
-    draft_parser = DraftParser(aperetti=args.aperetti, debug=args.debug)
+    draft_parser = DraftParser(aperetti=args.aperetti, debug=args.debug, watch_time=args.watch_time,
+                               screenshot_path=args.screenshot_path)
     from os import system
 
     system("title " + "FocusFire")

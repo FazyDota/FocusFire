@@ -19,7 +19,28 @@ hero_names = ["Abaddon", "Alchemist", "Ancient Apparition", "Anti-Mage", "Arc Wa
               "Vengeful Spirit", "Venomancer", "Viper", "Visage", "Void Spirit", "Wraith King",
               "Weaver", "Warlock", "Windranger", "Winter Wyvern", "Witch Doctor", "Zeus"]
 
-character_whitelist = set('abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+hero_names_lower = ["abaddon", "alchemist", "ancient apparition", "anti-mage", "arc warden", "axe",
+                    "bane", "batrider", "beastmaster", "bloodseeker", "bounty hunter", "brewmaster",
+                    "bristleback", "broodmother", "centaur warrunner", "chaos knight", "chen",
+                    "clinkz", "clockwerk", "crystal maiden", "dark seer", "dark willow", "dawnbreaker",
+                    "dazzle", "death prophet", "disruptor", "doom", "dragon knight", "drow ranger",
+                    "earth spirit", "earthshaker", "elder titan", "ember spirit", "enchantress", "enigma",
+                    "faceless void", "grimstroke", "gyrocopter", "hoodwink", "huskar", "invoker", "io",
+                    "jakiro", "juggernaut", "keeper of the light", "kunkka", "legion commander",
+                    "leshrac", "lich", "lifestealer", "lina", "lion", "lone druid", "luna", "lycan",
+                    "magnus", "marci", "mars", "medusa", "meepo", "mirana", "monkey king", "morphling",
+                    "muerta", "naga siren", "nature's prophet", "necrophos", "night stalker", "nyx assassin",
+                    "ogre magi", "omniknight", "oracle", "outworld destroyer", "pangolier",
+                    "phantom assassin", "phantom lancer", "phoenix", "primal beast", "puck", "pudge", "pugna",
+                    "queen of pain", "razor", "riki", "rubick", "sand king", "shadow demon", "shadow fiend",
+                    "shadow shaman", "silencer", "skywrath mage", "slardar", "slark", "snapfire",
+                    "sniper", "spectre", "spirit breaker", "storm spirit", "sven", "techies",
+                    "templar assassin", "terrorblade", "tidehunter", "timbersaw", "tinker", "tiny",
+                    "treant protector", "troll warlord", "tusk", "underlord", "undying", "ursa",
+                    "vengeful spirit", "venomancer", "viper", "visage", "void spirit", "wraith king",
+                    "weaver", "warlock", "windranger", "winter wyvern", "witch doctor", "zeus"]
+
+character_whitelist = set('abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ01\'')
 
 hero_name_to_id_map = {"Anti-Mage": 1, "Axe": 2, "Bane": 3, "Bloodseeker": 4, "Crystal Maiden": 5, "Drow Ranger": 6,
                        "Earthshaker": 7, "Juggernaut": 8, "Mirana": 9, "Morphling": 10, "Shadow Fiend": 11,
