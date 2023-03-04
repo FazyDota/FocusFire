@@ -6,7 +6,7 @@ import webbrowser
 import pygetwindow as gw
 import numpy as np
 
-from gooey import Gooey
+from gooey import Gooey, GooeyParser
 from sklearn.cluster import KMeans
 from warnings import simplefilter
 from datetime import datetime
@@ -77,35 +77,21 @@ def setup_for_OCR(input_image, assumed_color):
             logging.debug(f"Successfully extracted meaningful text with red mask: {extracted_text}")
             return extracted_text
         masks_tried += 2
-    elif assumed_color == "unknown":
-        extracted_text = OCR_text_from_image(255 - input_image)
+
+    if masks_tried == 1:
+        red_mask = cv2.inRange(input_image, (21, 30, 145), (35, 60, 205))
+        extracted_text = OCR_text_from_image(255 - red_mask)
         if validate_extracted_text(extracted_text):
-            logging.debug(f"Successfully extracted meaningful text with white mask: {extracted_text}")
+            logging.debug(f"Successfully extracted meaningful text with red mask: {extracted_text}")
             return extracted_text
-        masks_tried += 4
 
-    while masks_tried < 7:
-        if masks_tried == 1:
-            red_mask = cv2.inRange(input_image, (21, 30, 145), (35, 60, 205))
-            extracted_text = OCR_text_from_image(255 - red_mask)
-            if validate_extracted_text(extracted_text):
-                logging.debug(f"Successfully extracted meaningful text with red mask: {extracted_text}")
-                return extracted_text
-            masks_tried += 2
-        if masks_tried == 2:
-            green_mask = cv2.inRange(input_image, (20, 120, 20), (70, 255, 70))
-            extracted_text = OCR_text_from_image(255 - green_mask)
-            if validate_extracted_text(extracted_text):
-                logging.debug(f"Successfully extracted meaningful text with green mask: {extracted_text}")
-                return extracted_text
-            masks_tried += 1
-        if masks_tried == 3:
-            extracted_text = OCR_text_from_image(255 - input_image)
-            if validate_extracted_text(extracted_text):
-                logging.debug(f"Successfully extracted meaningful text with white mask: {extracted_text}")
-                return extracted_text
-            masks_tried += 4
+    if masks_tried == 2:
+        green_mask = cv2.inRange(input_image, (20, 120, 20), (70, 255, 70))
+        extracted_text = OCR_text_from_image(255 - green_mask)
+        if validate_extracted_text(extracted_text):
+            logging.debug(f"Successfully extracted meaningful text with green mask: {extracted_text}")
 
+    logging.debug(f"Wasn't able to extract meaningful text with any mask: {extracted_text}")
     return "Unknown"
 
 
@@ -252,9 +238,10 @@ class DraftParser:
             if not hero_text or hero_text == "Unknown":
                 error_count = error_count + 1
                 if error_count > 4:
+                    logging.info("Draft parse unsuccessful, screenshot not might be right. Try again.")
                     return False
 
-            if hero_text:
+            if hero_text and hero_text != "Unknown":
                 logging.debug(f'{hero_text} extracted')
                 result += hero_text + '|'
                 url_result += str(hero_name_to_id_map[hero_text]) + ','
@@ -289,13 +276,13 @@ class DraftParser:
         return True
 
 
-@Gooey
+@Gooey(program_name="FocusFire")
 def main():
-    parser = argparse.ArgumentParser(description='Parse AD drafts.')
-    parser.add_argument('-adp', '--aperetti', dest='aperetti', action='store_true')
+    parser = GooeyParser(description='FocusFire - AD draft screenshot parsing tool')
+    parser.add_argument('-adp', '--aperetti', dest='aperetti', action='store_true', default=True)
     parser.add_argument('-d', '--debug', dest='debug', action='store_true')
-    parser.add_argument('-t', '--time', dest='watch_time', action='store_true')
-    parser.add_argument('-path', '--screenshot-path', dest='screenshot_path')
+    parser.add_argument('-t', '--time', dest='watch_time', action='store_true', default=True)
+    parser.add_argument('-path', '--screenshot-path', dest='screenshot_path', widget="FileChooser")
     args = parser.parse_args()
 
     draft_parser = DraftParser(aperetti=args.aperetti, debug=args.debug, watch_time=args.watch_time,

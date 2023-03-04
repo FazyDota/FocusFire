@@ -82,6 +82,6 @@ def match_with_hero_names(ocr_hero_name):
 
 
 def validate_extracted_text(text):
-    if text != 'Bn' and text != 'Be' and (len(text) > 2 or text.lower() == "io"):
-        return True
-    return False
+    #if text != 'Bn' and text != 'Be' and (len(text) > 2 or text.lower() == "io"):
+        #return True
+    return text.lower() in hero_names_lower
