@@ -177,6 +177,7 @@ class DraftParser:
 
             if not hero_text or hero_text == "Unknown":
                 error_count = error_count + 1
+                url_result += 'null,'
                 if error_count > 3:
                     logging.info("Draft parse unsuccessful, screenshot not might be right. Try again.")
                     return False
@@ -223,13 +224,38 @@ class DraftParser:
         if validate_extracted_text(extracted_text):
             logging.debug(f"Successfully extracted meaningful text with white mask: {extracted_text}")
             return extracted_text
+
+        extracted_text = self.OCR_text_from_image(input_image)
+        if validate_extracted_text(extracted_text):
+            logging.debug(f"Successfully extracted meaningful text with no mask: {extracted_text}")
+            return extracted_text
+
+        red_mask = cv2.inRange(input_image, (21, 30, 145), (35, 60, 205))
+        extracted_text = self.OCR_text_from_image(255 - red_mask)
+        if validate_extracted_text(extracted_text):
+            logging.debug(f"Successfully extracted meaningful text with red mask: {extracted_text}")
+            return extracted_text
+
+        green_mask = cv2.inRange(input_image, (20, 120, 20), (70, 255, 70))
+        extracted_text = self.OCR_text_from_image(255 - green_mask)
+        if validate_extracted_text(extracted_text):
+            logging.debug(f"Successfully extracted meaningful text with green mask: {extracted_text}")
+            return extracted_text
+
+        input_image = cv2.bitwise_not(input_image)
+        _, binary = cv2.threshold(input_image, 150, 255, cv2.THRESH_BINARY)
+        extracted_text = self.OCR_text_from_image(binary)
+        if validate_extracted_text(extracted_text):
+            logging.debug(f"Successfully extracted meaningful text with green mask: {extracted_text}")
+            return extracted_text
+
         return "Unknown"
 
     def OCR_text_from_image(self, img):
         if self.debug_flag:
             dt = datetime.now().strftime('%y%m%d_%H%M%S%f')[:-3]
             cv2.imwrite(f'sectors\\debug\\sector_{dt}_OCR_used.png', img)
-        ocr_config = r'--oem 1 --psm 7'
+        ocr_config = r'--oem 3 --psm 6'
         output = pytesseract.image_to_string(img, config=ocr_config)
         logging.debug(f"Pure OCR output: {output}")
 
