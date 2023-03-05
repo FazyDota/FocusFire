@@ -61,12 +61,13 @@ class DraftParser:
     total_running_times = []
     is_radiant = True
 
-    def __init__(self, aperetti, debug, watch_time, screenshot_path=""):
+    def __init__(self, args):
         self.date_string = ""
-        self.debug_flag = debug
-        self.aperetti = aperetti
-        self.watch_time = watch_time
-        self.screenshot_path = screenshot_path
+        self.args = args
+        self.debug_flag = args.debug
+        self.aperetti = args.aperetti
+        self.watch_time = args.watch_time
+        self.screenshot_path = args.screenshot_path
 
     def start_watching(self):
         """
@@ -128,14 +129,14 @@ class DraftParser:
         :return: False if the first sector (top left) contains no meaningful text, True otherwise.
         """
 
-        y_coords = [[196.0/1440.0, 236.0/1440.0],
-                    [412.0/1440.0, 452.0/1440.0],
-                    [628.0/1440.0, 668.0/1440.0],
-                    [844.0/1440.0, 884.0/1440.0],
-                    [1060.0/1440.0, 1100.0/1440.0]]
+        y_coords_ratios = [[196.0 / 1440.0, 236.0 / 1440.0],
+                           [412.0 / 1440.0, 452.0 / 1440.0],
+                           [628.0 / 1440.0, 668.0 / 1440.0],
+                           [844.0 / 1440.0, 884.0 / 1440.0],
+                           [1060.0 / 1440.0, 1100.0 / 1440.0]]
 
-        x_coords_radiant = [455.0/2560.0, 765.0/2560.0]
-        x_coords_dire = [1790.0/2560.0, 2100.0/2560.0]
+        x_coords_ratios_left = [455.0 / 2560.0, 765.0 / 2560.0]
+        x_coords_ratios_right = [1790.0 / 2560.0, 2100.0 / 2560.0]
 
         # [[0.1361111111111111, 0.1638888888888889],
         # [0.2861111111111111, 0.3138888888888889],
@@ -145,28 +146,28 @@ class DraftParser:
         # [0.177734375, 0.298828125]
         # [0.69921875, 0.8203125]
 
-        width = int(draft_screenshot.shape[1])
-        height = int(draft_screenshot.shape[0])
+        screenshot_width = int(draft_screenshot.shape[1])
+        screenshot_height = int(draft_screenshot.shape[0])
 
-        new_coords = []
-        for item in y_coords:
-            y_min = item[0] * float(height)
-            y_max = item[1] * float(height)
-            x_min = x_coords_radiant[0] * float(width)
-            x_max = x_coords_radiant[1] * float(width)
-            new_coords.append([int(y_min), int(y_max), int(x_min), int(x_max)])
+        calculated_sector_coords = []
+        for sector in y_coords_ratios:
+            y_min = sector[0] * float(screenshot_height)
+            y_max = sector[1] * float(screenshot_height)
+            x_min = x_coords_ratios_left[0] * float(screenshot_width)
+            x_max = x_coords_ratios_left[1] * float(screenshot_width)
+            calculated_sector_coords.append([int(y_min), int(y_max), int(x_min), int(x_max)])
 
-        for item in y_coords:
-            y_min = item[0] * float(height)
-            y_max = item[1] * float(height)
-            x_min = x_coords_dire[0] * float(width)
-            x_max = x_coords_dire[1] * float(width)
-            new_coords.append([int(y_min), int(y_max), int(x_min), int(x_max)])
+        for sector in y_coords_ratios:
+            y_min = sector[0] * float(screenshot_height)
+            y_max = sector[1] * float(screenshot_height)
+            x_min = x_coords_ratios_right[0] * float(screenshot_width)
+            x_max = x_coords_ratios_right[1] * float(screenshot_width)
+            calculated_sector_coords.append([int(y_min), int(y_max), int(x_min), int(x_max)])
 
         try:
             hero_sectors = []
-            for item in new_coords:
-                sector = draft_screenshot[item[0]:item[1], item[2]:item[3]]
+            for sector_coords in calculated_sector_coords:
+                sector = draft_screenshot[sector_coords[0]:sector_coords[1], sector_coords[2]:sector_coords[3]]
                 hero_sectors.append(sector)
         except TypeError:
             logging.warning('Could not load the screenshot correctly.')
@@ -174,13 +175,13 @@ class DraftParser:
 
         result = ''
         url_result = ''
-        logging.debug('Processing hero id:')
+        error_count = 0
+
+        logging.debug('Processing sector id:')
         self.date_string = datetime.now().strftime('%y%m%d_%H%M%S%f')[:-3]
         if self.debug_flag:
             cv2.imwrite(f'screens\\{self.date_string}_draft.png', draft_screenshot)
-            
-        error_count = 0
-        
+
         for idx, hero_name_sector in enumerate(hero_sectors):
             logging.debug(f'{idx}')
             processed_image = cv2.GaussianBlur(hero_name_sector, (9, 9), 1)
@@ -191,20 +192,20 @@ class DraftParser:
                 cv2.imwrite(f'sectors\\{self.date_string}_sector_{idx}_1_gaussian.png', processed_image)
 
             scale_percent = 200  # percent of original size
-            width = int(processed_image.shape[1] * scale_percent / 100)
-            height = int(processed_image.shape[0] * scale_percent / 100)
-            dim = (width, height)
+            screenshot_width = int(processed_image.shape[1] * scale_percent / 100)
+            screenshot_height = int(processed_image.shape[0] * scale_percent / 100)
+            dimensions = (screenshot_width, screenshot_height)
 
-            scaled_image = cv2.resize(processed_image, dim, interpolation=cv2.INTER_CUBIC)
+            scaled_image = cv2.resize(processed_image, dimensions, interpolation=cv2.INTER_CUBIC)
 
             if self.debug_flag:
-                cv2.imwrite(f'sectors\\{self.date_string}_sector_{idx}_1_smaller.png', scaled_image)
+                cv2.imwrite(f'sectors\\{self.date_string}_sector_{idx}_1_scaled.png', scaled_image)
 
             hero_text = self.try_to_extract_hero_name(idx, scaled_image)
 
             if not hero_text or hero_text == "Unknown":
                 error_count = error_count + 1
-                if error_count > 4:
+                if error_count > 3:
                     logging.info("Draft parse unsuccessful, screenshot not might be right. Try again.")
                     return False
 
@@ -262,34 +263,25 @@ class DraftParser:
             logging.debug(f"Successfully extracted meaningful text with white mask: {extracted_text}")
             return extracted_text
 
-        masks_tried = 0
         if assumed_color == "green":
             green_mask = cv2.inRange(input_image, (20, 120, 20), (70, 255, 70))
             extracted_text = self.OCR_text_from_image(255 - green_mask)
             if validate_extracted_text(extracted_text):
                 logging.debug(f"Successfully extracted meaningful text with green mask: {extracted_text}")
                 return extracted_text
-            masks_tried += 1
-        elif assumed_color == "red":
-            red_mask = cv2.inRange(input_image, (21, 30, 145), (35, 60, 205))
-            extracted_text = self.OCR_text_from_image(255 - red_mask)
-            if validate_extracted_text(extracted_text):
-                logging.debug(f"Successfully extracted meaningful text with red mask: {extracted_text}")
-                return extracted_text
-            masks_tried += 2
 
-        if masks_tried == 1:
-            red_mask = cv2.inRange(input_image, (21, 30, 145), (35, 60, 205))
-            extracted_text = self.OCR_text_from_image(255 - red_mask)
-            if validate_extracted_text(extracted_text):
-                logging.debug(f"Successfully extracted meaningful text with red mask: {extracted_text}")
-                return extracted_text
+        red_mask = cv2.inRange(input_image, (21, 30, 145), (35, 60, 205))
+        extracted_text = self.OCR_text_from_image(255 - red_mask)
+        if validate_extracted_text(extracted_text):
+            logging.debug(f"Successfully extracted meaningful text with red mask: {extracted_text}")
+            return extracted_text
 
-        if masks_tried == 2:
+        if assumed_color != "green":
             green_mask = cv2.inRange(input_image, (20, 120, 20), (70, 255, 70))
             extracted_text = self.OCR_text_from_image(255 - green_mask)
             if validate_extracted_text(extracted_text):
                 logging.debug(f"Successfully extracted meaningful text with green mask: {extracted_text}")
+                return extracted_text
 
         logging.debug(f"Wasn't able to extract meaningful text with any mask: {extracted_text}")
         return "Unknown"
@@ -316,11 +308,7 @@ def main():
     parser.add_argument('-path', '--screenshot-path', dest='screenshot_path', widget="FileChooser")
     args = parser.parse_args()
 
-    draft_parser = DraftParser(aperetti=args.aperetti, debug=args.debug, watch_time=args.watch_time,
-                               screenshot_path=args.screenshot_path)
-    from os import system
-
-    system("title " + "FocusFire")
+    draft_parser = DraftParser(args)
     draft_parser.start_watching()
 
 
