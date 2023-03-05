@@ -1,10 +1,10 @@
-import argparse
 import cv2
 import logging
 import pyperclip
 import webbrowser
 import pygetwindow as gw
 import numpy as np
+import pytesseract
 
 from gooey import Gooey, GooeyParser
 from sklearn.cluster import KMeans
@@ -13,8 +13,8 @@ from datetime import datetime
 from time import sleep, time
 from watchdog.observers import Observer
 from watchdog.events import PatternMatchingEventHandler
-from data import hero_name_to_id_map
-from utility import OCR_text_from_image, validate_extracted_text
+from data import hero_name_to_id_map, character_whitelist
+from utility import validate_extracted_text, replace_numbers, match_with_hero_names
 
 simplefilter(action='ignore', category=FutureWarning)
 
@@ -54,60 +54,6 @@ def get_dominant_colors(image_orig, count=1):
         color_list.append([int(color[0]), int(color[1]), int(color[2])])
 
     return color_list
-
-
-def setup_for_OCR(input_image, assumed_color):
-    extracted_text = OCR_text_from_image(255 - input_image)
-    if validate_extracted_text(extracted_text):
-        logging.debug(f"Successfully extracted meaningful text with white mask: {extracted_text}")
-        return extracted_text
-
-    masks_tried = 0
-    if assumed_color == "green":
-        green_mask = cv2.inRange(input_image, (20, 120, 20), (70, 255, 70))
-        extracted_text = OCR_text_from_image(255 - green_mask)
-        if validate_extracted_text(extracted_text):
-            logging.debug(f"Successfully extracted meaningful text with green mask: {extracted_text}")
-            return extracted_text
-        masks_tried += 1
-    elif assumed_color == "red":
-        red_mask = cv2.inRange(input_image, (21, 30, 145), (35, 60, 205))
-        extracted_text = OCR_text_from_image(255 - red_mask)
-        if validate_extracted_text(extracted_text):
-            logging.debug(f"Successfully extracted meaningful text with red mask: {extracted_text}")
-            return extracted_text
-        masks_tried += 2
-
-    if masks_tried == 1:
-        red_mask = cv2.inRange(input_image, (21, 30, 145), (35, 60, 205))
-        extracted_text = OCR_text_from_image(255 - red_mask)
-        if validate_extracted_text(extracted_text):
-            logging.debug(f"Successfully extracted meaningful text with red mask: {extracted_text}")
-            return extracted_text
-
-    if masks_tried == 2:
-        green_mask = cv2.inRange(input_image, (20, 120, 20), (70, 255, 70))
-        extracted_text = OCR_text_from_image(255 - green_mask)
-        if validate_extracted_text(extracted_text):
-            logging.debug(f"Successfully extracted meaningful text with green mask: {extracted_text}")
-
-    logging.debug(f"Wasn't able to extract meaningful text with any mask: {extracted_text}")
-    return "Unknown"
-
-
-def try_to_extract_hero_name(sector_idx, input_image):
-    assumed_color = "unknown"
-    if sector_idx in [0, 5]:
-        dominant_colors = get_dominant_colors(input_image)[0]
-        assumed_color = guess_color_scheme(dominant_colors)
-        logging.debug(f"SECTOR {sector_idx}: Assumed scheme: {assumed_color}")
-
-    elif assumed_color == "unknown":
-        dominant_colors = get_dominant_colors(input_image)[0]
-        assumed_color = guess_color_scheme(dominant_colors)
-        logging.debug(f"SECTOR {sector_idx}: Assumed scheme: {assumed_color}")
-
-    return setup_for_OCR(input_image, assumed_color)
 
 
 class DraftParser:
@@ -182,25 +128,46 @@ class DraftParser:
         :return: False if the first sector (top left) contains no meaningful text, True otherwise.
         """
 
+        y_coords = [[196.0/1440.0, 236.0/1440.0],
+                    [412.0/1440.0, 452.0/1440.0],
+                    [628.0/1440.0, 668.0/1440.0],
+                    [844.0/1440.0, 884.0/1440.0],
+                    [1060.0/1440.0, 1100.0/1440.0]]
+
+        x_coords_radiant = [455.0/2560.0, 765.0/2560.0]
+        x_coords_dire = [1790.0/2560.0, 2100.0/2560.0]
+
+        # [[0.1361111111111111, 0.1638888888888889],
+        # [0.2861111111111111, 0.3138888888888889],
+        # [0.4361111111111111, 0.4638888888888889],
+        # [0.5861111111111111, 0.6138888888888889],
+        # [0.7361111111111112, 0.7638888888888888]]
+        # [0.177734375, 0.298828125]
+        # [0.69921875, 0.8203125]
+
+        width = int(draft_screenshot.shape[1])
+        height = int(draft_screenshot.shape[0])
+
+        new_coords = []
+        for item in y_coords:
+            y_min = item[0] * float(height)
+            y_max = item[1] * float(height)
+            x_min = x_coords_radiant[0] * float(width)
+            x_max = x_coords_radiant[1] * float(width)
+            new_coords.append([int(y_min), int(y_max), int(x_min), int(x_max)])
+
+        for item in y_coords:
+            y_min = item[0] * float(height)
+            y_max = item[1] * float(height)
+            x_min = x_coords_dire[0] * float(width)
+            x_max = x_coords_dire[1] * float(width)
+            new_coords.append([int(y_min), int(y_max), int(x_min), int(x_max)])
+
         try:
-            hero_sectors = [draft_screenshot[193:233, 455:773],
-                            draft_screenshot[410:450, 455:773],
-                            draft_screenshot[628:668, 455:773],
-                            draft_screenshot[845:885, 455:773],
-                            draft_screenshot[1062:1102, 455:773],
-
-                            draft_screenshot[193:233, 1789:2099],
-                            draft_screenshot[410:450, 1789:2099],
-                            draft_screenshot[628:668, 1789:2099],
-                            draft_screenshot[845:885, 1789:2099],
-                            draft_screenshot[1062:1102, 1789:2099]]
-
-            # Gathering for future use
-            extra_left = draft_screenshot[1005:1100, 910:1005]
-            extra_right = draft_screenshot[1005:1100, 1315:1410]
-            cv2.imwrite(f'sectors\\extra\\EXTRA_LEFT_{datetime.now().timestamp()}.png', extra_left)
-            cv2.imwrite(f'sectors\\extra\\EXTRA_RIGHT_{datetime.now().timestamp()}.png', extra_right)
-
+            hero_sectors = []
+            for item in new_coords:
+                sector = draft_screenshot[item[0]:item[1], item[2]:item[3]]
+                hero_sectors.append(sector)
         except TypeError:
             logging.warning('Could not load the screenshot correctly.')
             return False
@@ -233,7 +200,7 @@ class DraftParser:
             if self.debug_flag:
                 cv2.imwrite(f'sectors\\{self.date_string}_sector_{idx}_1_smaller.png', scaled_image)
 
-            hero_text = try_to_extract_hero_name(idx, scaled_image)
+            hero_text = self.try_to_extract_hero_name(idx, scaled_image)
 
             if not hero_text or hero_text == "Unknown":
                 error_count = error_count + 1
@@ -274,6 +241,70 @@ class DraftParser:
             logging.info(f'Total running normal time: {total_time}')
             logging.info(self.total_running_times)
         return True
+
+    def try_to_extract_hero_name(self, sector_idx, input_image):
+        assumed_color = "unknown"
+        if sector_idx in [0, 5]:
+            dominant_colors = get_dominant_colors(input_image)[0]
+            assumed_color = guess_color_scheme(dominant_colors)
+            logging.debug(f"SECTOR {sector_idx}: Assumed scheme: {assumed_color}")
+
+        elif assumed_color == "unknown":
+            dominant_colors = get_dominant_colors(input_image)[0]
+            assumed_color = guess_color_scheme(dominant_colors)
+            logging.debug(f"SECTOR {sector_idx}: Assumed scheme: {assumed_color}")
+
+        return self.setup_for_OCR(input_image, assumed_color)
+
+    def setup_for_OCR(self, input_image, assumed_color):
+        extracted_text = self.OCR_text_from_image(255 - input_image)
+        if validate_extracted_text(extracted_text):
+            logging.debug(f"Successfully extracted meaningful text with white mask: {extracted_text}")
+            return extracted_text
+
+        masks_tried = 0
+        if assumed_color == "green":
+            green_mask = cv2.inRange(input_image, (20, 120, 20), (70, 255, 70))
+            extracted_text = self.OCR_text_from_image(255 - green_mask)
+            if validate_extracted_text(extracted_text):
+                logging.debug(f"Successfully extracted meaningful text with green mask: {extracted_text}")
+                return extracted_text
+            masks_tried += 1
+        elif assumed_color == "red":
+            red_mask = cv2.inRange(input_image, (21, 30, 145), (35, 60, 205))
+            extracted_text = self.OCR_text_from_image(255 - red_mask)
+            if validate_extracted_text(extracted_text):
+                logging.debug(f"Successfully extracted meaningful text with red mask: {extracted_text}")
+                return extracted_text
+            masks_tried += 2
+
+        if masks_tried == 1:
+            red_mask = cv2.inRange(input_image, (21, 30, 145), (35, 60, 205))
+            extracted_text = self.OCR_text_from_image(255 - red_mask)
+            if validate_extracted_text(extracted_text):
+                logging.debug(f"Successfully extracted meaningful text with red mask: {extracted_text}")
+                return extracted_text
+
+        if masks_tried == 2:
+            green_mask = cv2.inRange(input_image, (20, 120, 20), (70, 255, 70))
+            extracted_text = self.OCR_text_from_image(255 - green_mask)
+            if validate_extracted_text(extracted_text):
+                logging.debug(f"Successfully extracted meaningful text with green mask: {extracted_text}")
+
+        logging.debug(f"Wasn't able to extract meaningful text with any mask: {extracted_text}")
+        return "Unknown"
+
+    def OCR_text_from_image(self, img):
+        if self.debug_flag:
+            dt = datetime.now().strftime('%y%m%d_%H%M%S%f')[:-3]
+            cv2.imwrite(f'sectors\\debug\\sector_{dt}_OCR_used.png', img)
+        ocr_config = r'--oem 1 --psm 7'
+        output = pytesseract.image_to_string(img, config=ocr_config)
+        logging.debug(f"Pure OCR output: {output}")
+
+        cleaned_output = replace_numbers(''.join(filter(character_whitelist.__contains__, output))).strip()
+        matched_output = match_with_hero_names(cleaned_output)
+        return matched_output
 
 
 @Gooey(program_name="FocusFire")

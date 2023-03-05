@@ -2,11 +2,8 @@ import bisect
 import logging
 from titlecase import titlecase
 from collections import deque
-from datetime import datetime
 
-import cv2
-import pytesseract
-from data import character_whitelist, hero_names, hero_names_lower
+from data import hero_names, hero_names_lower
 
 logging.basicConfig(handlers=[logging.FileHandler("full.log"), logging.StreamHandler()], encoding="utf-8",
                     format="%(asctime)s: %(message)s",
@@ -14,19 +11,8 @@ logging.basicConfig(handlers=[logging.FileHandler("full.log"), logging.StreamHan
 
 
 def replace_numbers(ocr_input):
-    return ocr_input.replace("5", "S").replace("1", "I").replace("0", "O").replace("2", "Z").replace("4", "A").replace("8", "B")
-
-
-def OCR_text_from_image(img):
-    # dt = datetime.now().strftime('%y%m%d_%H%M%S%f')[:-3]
-    # cv2.imwrite(f'sectors\\debug\\sector_{dt}_OCR_used.png', img)
-    ocr_config = r'--oem 1 --psm 7'
-    output = pytesseract.image_to_string(img, config=ocr_config)
-    logging.debug(f"Pure OCR output: {output}")
-
-    cleaned_output = replace_numbers(''.join(filter(character_whitelist.__contains__, output))).strip()
-    matched_output = match_with_hero_names(cleaned_output)
-    return matched_output
+    return ocr_input.replace("5", "S").replace("1", "I").replace("0", "O").replace("2", "Z")\
+        .replace("4", "A").replace("8", "B")
 
 
 def get_edit_distance(s1, s2):
@@ -82,6 +68,4 @@ def match_with_hero_names(ocr_hero_name):
 
 
 def validate_extracted_text(text):
-    #if text != 'Bn' and text != 'Be' and (len(text) > 2 or text.lower() == "io"):
-        #return True
     return text.lower() in hero_names_lower
