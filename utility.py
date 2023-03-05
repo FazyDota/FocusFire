@@ -2,12 +2,19 @@ import bisect
 import logging
 from titlecase import titlecase
 from collections import deque
+from sys import platform
+import os
+import ctypes
+import json
+from pathlib import Path
 
 from data import hero_names, hero_names_lower
 
 logging.basicConfig(handlers=[logging.FileHandler("full.log"), logging.StreamHandler()], encoding="utf-8",
                     format="%(asctime)s: %(message)s",
                     datefmt="%H:%M:%S", level=logging.DEBUG)
+
+logging.getLogger('PIL').setLevel(logging.ERROR)
 
 
 def replace_numbers(ocr_input):
@@ -69,3 +76,77 @@ def match_with_hero_names(ocr_hero_name):
 
 def validate_extracted_text(text):
     return text.lower() in hero_names_lower
+
+
+def try_to_locate_screenshot_folder():
+    if platform in ['win32', 'cygwin']:
+        # Get drive letters
+        dmask = ctypes.windll.kernel32.GetLogicalDrives()
+        drives = [chr(ord('A') + n) for n in range(26) if (dmask >> n) & 1]
+
+        for drive in drives:
+            for root, dirs, files in os.walk(f"{drive}:\\", topdown=False):
+                for name in dirs:
+                    current_path = Path(root, name)
+                    if Path(root, name).match('760/remote/570/screenshots'):
+                        logging.debug(f"Successfully located Dota 2 screenshot folder at: {current_path}")
+                        return current_path
+        logging.debug("Could not locate Dota 2 screenshot folder.")
+        return None
+
+    elif platform == 'darwin':
+        for root, dirs, files in os.walk("/Users/", topdown=False):
+            for name in dirs:
+                current_path = Path(root, name)
+                if Path(root, name).match('760/remote/570/screenshots'):
+                    logging.debug(f"Successfully located Dota 2 screenshot folder at: {current_path}")
+                    return current_path
+        logging.debug("Could not locate Dota 2 screenshot folder.")
+        return None
+
+    elif platform == 'linux':
+        for root, dirs, files in os.walk("~/.local/share/", topdown=False):
+            for name in dirs:
+                current_path = Path(root, name)
+                if Path(root, name).match('760/remote/570/screenshots'):
+                    logging.debug(f"Successfully located Dota 2 screenshot folder at: {current_path}")
+                    return current_path
+        logging.debug("Could not locate Dota 2 screenshot folder.")
+        return None
+
+    else:
+        logging.debug("Unrecognized OS - could not locate Dota 2 screenshot folder.")
+        return None
+
+
+def load_config():
+    config_path = Path('config.json')
+    config_with_defaults = {'adp': True, 'debug': False, 'watch_time': False, 'screenshot_path': ""}
+
+    if config_path.exists():
+        with open(config_path) as config_file:
+            try:
+                config = json.load(config_file)
+            except (json.decoder.JSONDecodeError, UnicodeDecodeError) as error:
+                logging.debug(f"Config file had wrong format, encoding or something. Using defaults. Error: {error}")
+                return config_with_defaults
+
+            config_with_defaults['adp'] = config.get('use_ability_draft_plus', True)
+            config_with_defaults['debug'] = config.get('debug_mode', False)
+            config_with_defaults['watch_time'] = config.get('track_processing_time', False)
+            config_with_defaults['screenshot_path'] = config.get('dota_screenshots_path', "")
+            return config_with_defaults
+    else:
+        return config_with_defaults
+
+
+def save_config(args_dict):
+    config = {'use_ability_draft_plus': args_dict['Use Ability Draft Plus'],
+              'debug_mode': args_dict['Use Debug Mode'],
+              'track_processing_time': args_dict['Track Processing Time'],
+              'dota_screenshots_path': args_dict['Screenshot Path']}
+
+    logging.debug("Running save_config")
+    config_path = Path('config.json')
+    with open(config_path, 'w') as config_file:
+        json.dump(config, config_file, indent=4)

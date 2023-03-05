@@ -13,6 +13,8 @@ from datetime import datetime
 from time import sleep, time
 from watchdog.observers import Observer
 from watchdog.events import PatternMatchingEventHandler
+
+import utility
 from data import hero_name_to_id_map, character_whitelist
 from utility import validate_extracted_text, replace_numbers, match_with_hero_names
 
@@ -63,11 +65,20 @@ class DraftParser:
 
     def __init__(self, args):
         self.date_string = ""
-        self.args = args
-        self.debug_flag = args.debug
-        self.aperetti = args.aperetti
-        self.watch_time = args.watch_time
-        self.screenshot_path = args.screenshot_path
+        args_dict = vars(args)
+        self.debug_flag = args_dict['Use Debug Mode']
+        self.use_adp = args_dict['Use Ability Draft Plus']
+        self.watch_time = args_dict['Track Processing Time']
+
+        if not args_dict['Screenshot Path']:
+            logging.debug("Locating Dota 2 screenshot path automatically.")
+            self.screenshot_path = str(utility.try_to_locate_screenshot_folder())
+            logging.debug(f"Autopath: {self.screenshot_path}, saved to config.")
+            args_dict['Screenshot Path'] = self.screenshot_path
+        else:
+            self.screenshot_path = args_dict['Screenshot Path']
+
+        utility.save_config(args_dict)
 
     def start_watching(self):
         """
@@ -96,11 +107,6 @@ class DraftParser:
                 pass
             self.handle_draft_sector_parsing(screenshot)
 
-        if self.screenshot_path:
-            dota_screens_path = self.screenshot_path
-        else:
-            dota_screens_path = "C:\\Program Files (x86)\\Steam\\userdata\\67712324\\760\\remote\\570\\screenshots"
-
         patterns = ["*.jpg"]
         ignore_patterns = None
         ignore_directories = False
@@ -108,9 +114,9 @@ class DraftParser:
         watchdog_handler = PatternMatchingEventHandler(patterns, ignore_patterns, ignore_directories, case_sensitive)
         watchdog_handler.on_created = on_created
         watchdog_observer = Observer()
-        watchdog_observer.schedule(watchdog_handler, dota_screens_path, recursive=False)
+        watchdog_observer.schedule(watchdog_handler, self.screenshot_path, recursive=False)
         watchdog_observer.start()
-        logging.debug(f'Watchdog observer started, watching: {dota_screens_path}')
+        logging.debug(f'Watchdog observer started, watching: {self.screenshot_path}')
 
         try:
             while True:
@@ -223,7 +229,7 @@ class DraftParser:
         logging.info(f'Copied into clipboard! Result:\n {result}')
         website_url = f"http://127.0.0.1:8000/abilities?heroes={url_result}"
 
-        if self.aperetti:
+        if self.use_adp:
             dire = url_result.split(",")[5:]
             aperetti_string = ",".join(url_result.split(",")[0:5] + ["null", "null"] + dire[::-1])
             website_url = f"https://abilitydraftplus.com/?heroes=[{aperetti_string}]"
@@ -299,13 +305,38 @@ class DraftParser:
         return matched_output
 
 
-@Gooey(program_name="FocusFire")
+@Gooey(program_name="FocusFire", show_stop_warning=False, default_size=(1080, 640))
 def main():
     parser = GooeyParser(description='FocusFire - AD draft screenshot parsing tool')
-    parser.add_argument('-adp', '--aperetti', dest='aperetti', action='store_true', default=True)
-    parser.add_argument('-d', '--debug', dest='debug', action='store_true')
-    parser.add_argument('-t', '--time', dest='watch_time', action='store_true', default=True)
-    parser.add_argument('-path', '--screenshot-path', dest='screenshot_path', widget="FileChooser")
+    config = utility.load_config()
+
+    screenshot_group = parser.add_argument_group(
+        "Important Settings",
+    )
+    screenshot_group.add_argument('-screenshot_path', '--Screenshot Path', widget="DirChooser",
+                                  gooey_options={'initial_value': config['screenshot_path']},
+                                  help='This folder will be watched for new screenshots when FocusFire is running.'
+                                       ' Will try to auto-fill if left blank.'
+                                       ' \nAuto-fill might find the wrong folder if '
+                                       'there are more users with Dota 2 screenshot folders.')
+
+    additional_settings = parser.add_argument_group(
+        "Additional Settings",
+        "You can keep these on default."
+    )
+    additional_settings.add_argument('-adp', '--Use Ability Draft Plus', action='store_true',
+                                     gooey_options={'initial_value': config['adp']},
+                                     help='If turned off, will attempt to use locally running Blur instance.'
+                                          ' Keep on otherwise.')
+    additional_settings.add_argument('-debug', '--Use Debug Mode', action='store_true',
+                                     gooey_options={'initial_value': config['debug']},
+                                     help='Additional log messages. '
+                                          'Also will save pieces of screenshots to a subfolder.'
+                                          ' Useful if something doesn\'t work.')
+    additional_settings.add_argument('-time', '--Track Processing Time', action='store_true',
+                                     gooey_options={'initial_value': config['watch_time']},
+                                     help='Display basic information about processing time in the run log.')
+
     args = parser.parse_args()
 
     draft_parser = DraftParser(args)
