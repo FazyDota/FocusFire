@@ -3,11 +3,9 @@ import logging
 import pyperclip
 import webbrowser
 import pygetwindow as gw
-import numpy as np
 import pytesseract
 
 from gooey import Gooey, GooeyParser
-from sklearn.cluster import KMeans
 from warnings import simplefilter
 from datetime import datetime
 from time import sleep, time
@@ -24,38 +22,6 @@ simplefilter(action='ignore', category=FutureWarning)
 logging.basicConfig(handlers=[logging.FileHandler("full.log"), logging.StreamHandler()], encoding='utf-8',
                     format="%(asctime)s: %(levelname)s - %(message)s",
                     datefmt='%H:%M:%S', level=logging.INFO)
-
-
-def guess_color_scheme(color_list):
-    red = color_list[0]
-    green = color_list[1]
-    blue = color_list[2]
-
-    if 8 < red < 23 and 30 < green < 55 and 10 < blue < 25:
-        return "green"
-
-    if 30 < red < 55 and 8 < green < 23 and 6 < blue < 17:
-        return "red"
-
-    return "unknown"
-
-
-def get_dominant_colors(image_orig, count=1):
-    image = cv2.cvtColor(image_orig, cv2.COLOR_BGR2RGB)
-    reshape = image.reshape((image.shape[0] * image.shape[1], 3))
-    cluster = KMeans(n_clusters=count).fit(reshape)
-    labels = np.arange(0, len(np.unique(cluster.labels_)) + 1)
-    (hist, _) = np.histogram(cluster.labels_, bins=labels)
-    hist = hist.astype("float")
-    hist /= hist.sum()
-    colors = sorted([(percent, color) for (percent, color) in zip(hist, cluster.cluster_centers_)])
-
-    color_list = []
-
-    for (percent, color) in colors:
-        color_list.append([int(color[0]), int(color[1]), int(color[2])])
-
-    return color_list
 
 
 class DraftParser:
@@ -207,7 +173,7 @@ class DraftParser:
             if self.debug_flag:
                 cv2.imwrite(f'sectors\\{self.date_string}_sector_{idx}_1_scaled.png', scaled_image)
 
-            hero_text = self.try_to_extract_hero_name(idx, scaled_image)
+            hero_text = self.try_to_extract_hero_name(scaled_image)
 
             if not hero_text or hero_text == "Unknown":
                 error_count = error_count + 1
@@ -249,47 +215,14 @@ class DraftParser:
             logging.info(self.total_running_times)
         return True
 
-    def try_to_extract_hero_name(self, sector_idx, input_image):
-        assumed_color = "unknown"
-        if sector_idx in [0, 5]:
-            dominant_colors = get_dominant_colors(input_image)[0]
-            assumed_color = guess_color_scheme(dominant_colors)
-            logging.debug(f"SECTOR {sector_idx}: Assumed scheme: {assumed_color}")
+    def try_to_extract_hero_name(self, input_image):
+        return self.setup_for_OCR(input_image)
 
-        elif assumed_color == "unknown":
-            dominant_colors = get_dominant_colors(input_image)[0]
-            assumed_color = guess_color_scheme(dominant_colors)
-            logging.debug(f"SECTOR {sector_idx}: Assumed scheme: {assumed_color}")
-
-        return self.setup_for_OCR(input_image, assumed_color)
-
-    def setup_for_OCR(self, input_image, assumed_color):
+    def setup_for_OCR(self, input_image):
         extracted_text = self.OCR_text_from_image(255 - input_image)
         if validate_extracted_text(extracted_text):
             logging.debug(f"Successfully extracted meaningful text with white mask: {extracted_text}")
             return extracted_text
-
-        if assumed_color == "green":
-            green_mask = cv2.inRange(input_image, (20, 120, 20), (70, 255, 70))
-            extracted_text = self.OCR_text_from_image(255 - green_mask)
-            if validate_extracted_text(extracted_text):
-                logging.debug(f"Successfully extracted meaningful text with green mask: {extracted_text}")
-                return extracted_text
-
-        red_mask = cv2.inRange(input_image, (21, 30, 145), (35, 60, 205))
-        extracted_text = self.OCR_text_from_image(255 - red_mask)
-        if validate_extracted_text(extracted_text):
-            logging.debug(f"Successfully extracted meaningful text with red mask: {extracted_text}")
-            return extracted_text
-
-        if assumed_color != "green":
-            green_mask = cv2.inRange(input_image, (20, 120, 20), (70, 255, 70))
-            extracted_text = self.OCR_text_from_image(255 - green_mask)
-            if validate_extracted_text(extracted_text):
-                logging.debug(f"Successfully extracted meaningful text with green mask: {extracted_text}")
-                return extracted_text
-
-        logging.debug(f"Wasn't able to extract meaningful text with any mask: {extracted_text}")
         return "Unknown"
 
     def OCR_text_from_image(self, img):
