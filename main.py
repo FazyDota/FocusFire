@@ -110,6 +110,7 @@ class DraftParser:
         x_coords_ratios_left = [455.0 / 2560.0, 765.0 / 2560.0]
         x_coords_ratios_right = [1790.0 / 2560.0, 2100.0 / 2560.0]
 
+        # 16:9 percentage coords, y, x left, x right
         # [[0.1361111111111111, 0.1638888888888889],
         # [0.2861111111111111, 0.3138888888888889],
         # [0.4361111111111111, 0.4638888888888889],
@@ -120,6 +121,12 @@ class DraftParser:
 
         screenshot_width = int(draft_screenshot.shape[1])
         screenshot_height = int(draft_screenshot.shape[0])
+
+        if screenshot_width == 2560 and screenshot_height == 1400:
+            extra_left = draft_screenshot[1005:1100, 910:1005]
+            extra_right = draft_screenshot[1005:1100, 1315:1410]
+            cv2.imwrite(f'sectors\\extra\\EXTRA_LEFT_{datetime.now().timestamp()}.png', extra_left)
+            cv2.imwrite(f'sectors\\extra\\EXTRA_RIGHT_{datetime.now().timestamp()}.png', extra_right)
 
         calculated_sector_coords = []
         for sector in y_coords_ratios:
@@ -158,8 +165,7 @@ class DraftParser:
             logging.debug(f'{idx}')
             processed_image = cv2.GaussianBlur(hero_name_sector, (9, 9), 1)
 
-            if self.debug_flag:
-                cv2.imwrite(f'sectors\\{self.date_string}_sector_{idx}_0_raw.png', hero_name_sector)
+            cv2.imwrite(f'sectors\\{self.date_string}_sector_{idx}_0_raw.png', hero_name_sector)
             if self.debug_flag:
                 cv2.imwrite(f'sectors\\{self.date_string}_sector_{idx}_1_gaussian.png', processed_image)
 
@@ -252,9 +258,8 @@ class DraftParser:
         return "Unknown"
 
     def OCR_text_from_image(self, img):
-        if self.debug_flag:
-            dt = datetime.now().strftime('%y%m%d_%H%M%S%f')[:-3]
-            cv2.imwrite(f'sectors\\debug\\sector_{dt}_OCR_used.png', img)
+        dt = datetime.now().strftime('%y%m%d_%H%M%S%f')[:-3]
+        cv2.imwrite(f'sectors\\debug\\sector_{dt}_OCR_used.png', img)
         ocr_config = r'--oem 3 --psm 6'
         output = pytesseract.image_to_string(img, config=ocr_config)
         logging.debug(f"Pure OCR output: {output}")
