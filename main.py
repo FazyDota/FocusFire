@@ -1,9 +1,12 @@
+import os
+
 import cv2
 import logging
 import pyperclip
 import webbrowser
 import pygetwindow as gw
 import pytesseract
+import sys
 
 from gooey import Gooey, GooeyParser
 from warnings import simplefilter
@@ -69,7 +72,7 @@ class DraftParser:
             try:
                 win = gw.getWindowsWithTitle('FocusFire')[0]
                 win.activate()
-            except gw.PyGetWindowException:
+            except (gw.PyGetWindowException, IndexError):
                 pass
             self.handle_draft_sector_parsing(screenshot)
 
@@ -272,6 +275,7 @@ class DraftParser:
 @Gooey(program_name="FocusFire", show_stop_warning=False, default_size=(1080, 640))
 def main():
     parser = GooeyParser(description='FocusFire - AD draft screenshot parsing tool')
+    os.system("title FocusFire")
     config = utility.load_config()
 
     screenshot_group = parser.add_argument_group(
